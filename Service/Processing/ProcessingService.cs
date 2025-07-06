@@ -11,27 +11,30 @@
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Serviço de processamento em fila foi iniciado.");
+        _logger.LogInformation("Serviço de processamento em fila foi iniciado (modo paralelo).");
+
+        var tasksList = new List<Task>();
+        var maxConcurrency = _throttleService._maxConcurrency;
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            try
-            {
-                await _throttleService.DequeueAndProcess();
+            tasksList.RemoveAll(t => t.IsCompleted);
 
-                await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
-            }
-            catch (OperationCanceledException)
+            var availableSlots = maxConcurrency - tasksList.Count;
+
+            if (availableSlots > 0)
             {
-                break;
+                for (int i = 0; i < availableSlots; i++)
+                {
+                    var consumerTask = _throttleService.DequeueAndProcess();
+                    tasksList.Add(consumerTask);
+                }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Erro inesperado no worker de processamento em fila.");
-                await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
-            }
+
+            await Task.Delay(500, stoppingToken);
         }
 
+        await Task.WhenAll(tasksList);
         _logger.LogInformation("Serviço de processamento em fila foi parado.");
     }
 }

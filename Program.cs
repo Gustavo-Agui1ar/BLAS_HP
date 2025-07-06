@@ -9,12 +9,15 @@ builder.Services.AddCors(options =>
         {
             policy.AllowAnyOrigin()
                   .AllowAnyHeader()
-                  .AllowAnyMethod();
+                  .AllowAnyMethod()
+                  .WithExposedHeaders("x-execution-time");
         });
 });
 
 // ----------------------------------------------------
 
+builder.Services.AddHostedService<ImageCleanupService>();
+builder.Services.AddHostedService<QueuedProcessingService>();
 builder.Services.AddSingleton<IResourceThrottleService, ResourceThrottleService>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

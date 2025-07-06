@@ -7,12 +7,10 @@ using Microsoft.AspNetCore.Mvc;
 public class ImageController : ControllerBase
 {
     private readonly IResourceThrottleService _throttleService;
-    private readonly IServiceProvider _serviceProvider;
 
-    public ImageController(IResourceThrottleService throttleService, IServiceProvider serviceProvider)
+    public ImageController(IResourceThrottleService throttleService)
     {
         _throttleService = throttleService;
-        _serviceProvider = serviceProvider;
     }
 
     [HttpPost]
@@ -20,11 +18,7 @@ public class ImageController : ControllerBase
     {
         try
         {
-            Func<Task<string>> work = async () =>
-            {
-                using var scope = _serviceProvider.CreateScope();
-                return await Task.Run(() => PythonService.ResolveImage(request));
-            };
+            Func<Task<string>> work = async () => { return await Task.Run(() => PythonService.ResolveImage(request)); };
 
             var result = await _throttleService.TryProcessOrQueueAsync(work);
 
@@ -49,21 +43,43 @@ public class ImageController : ControllerBase
     }
 
     [HttpGet("status/{jobId}")]
-    public IActionResult GetJobStatus(Guid jobId)
+    public async Task<IActionResult> GetJobStatus(Guid jobId)
     {
-        
-        var jobStatus = _throttleService.GetJob(jobId);
+        var job = _throttleService.GetJob(jobId);
 
-        if (jobStatus == null)
+        if (job == null)
         {
             return NotFound(new { message = "Job não encontrado." });
         }
 
-        if(jobStatus.Status == JobStatus.Completed)
+        return job.Status switch
         {
+            JobStatus.Queued => Ok(new { status = "Queued" }),
 
-        }
+            JobStatus.Processing => Ok(new { status = "Processing" }),
 
-        return Ok(jobStatus); // Retorna um objeto como { status: "Completed", imageUrl: "/images/resultado_xyz.png" }
+            JobStatus.Completed when string.IsNullOrEmpty(job.ResultPath) || !System.IO.File.Exists(job.ResultPath)
+                => NotFound(new { message = "Arquivo da imagem não encontrado no servidor." }),
+
+            JobStatus.Completed => await HandleCompletedJob(job),
+
+            JobStatus.Failed => StatusCode(500, new
+            {
+                status = "Failed",
+                error = job.ErrorMessage ?? "Erro desconhecido.",
+                duration = $"{job.TimeExecuted.TotalSeconds:F2} segundos"
+            }),
+
+            _ => BadRequest(new { message = "Status de job desconhecido." })
+        };
+    }
+
+    private async Task<IActionResult> HandleCompletedJob(JobInfo job)
+    {
+        byte[] imageBytes = await System.IO.File.ReadAllBytesAsync(job.ResultPath);
+
+        Response.Headers.Append("X-Execution-Time", $"{job.TimeExecuted.TotalSeconds:F3}");
+
+        return File(imageBytes, "image/png");
     }
 }
