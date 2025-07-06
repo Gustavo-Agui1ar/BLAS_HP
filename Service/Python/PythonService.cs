@@ -13,7 +13,7 @@ namespace BLAS_HP.Service.Python
         static string scriptFolder = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), @"Utils\Python"));
         static string scriptFile = Path.Combine(scriptFolder, "algorithm_matrix.py");
         static string pythonExecutable = @"C:\Python312\python.exe";
-        public static IActionResult ResolveImage(ComputeImageRequest req)
+        public static string ResolveImage(ComputeImageRequest req)
         {
             string arguments = $"\"{scriptFile}\"";
 
@@ -33,9 +33,12 @@ namespace BLAS_HP.Service.Python
             {
                 using (var process = Process.Start(processStartInfo))
                 {
-                    string jsonData = JsonSerializer.Serialize(req);
+                    if(process == null)
+                    {
+                        throw new InvalidOperationException("Não foi possível iniciar o processo Python.");
+                    }
 
-                    Console.WriteLine($"\nEnviando JSON para o Python via stdin:\n{jsonData}\n");
+                    string jsonData = JsonSerializer.Serialize(req);
 
                     process.StandardInput.Write(jsonData);
                     process.StandardInput.Close();
@@ -43,29 +46,22 @@ namespace BLAS_HP.Service.Python
                     string output = process.StandardOutput.ReadToEnd();
                     string errors = process.StandardError.ReadToEnd();
                     process.WaitForExit();
-                    return new OkObjectResult(output);
+
+                    using var jsonDoc = JsonDocument.Parse(output);
+
+                    if (jsonDoc.RootElement.TryGetProperty("imagePath", out var pathElement))
+                    {
+                        return pathElement.GetString() ?? string.Empty;
+                    }
+
+                    return string.Empty;
                 }
             }
             catch (Exception ex)
             {
-                return new BadRequestResult();
+                Console.WriteLine($"Erro ao executar o script Python: {ex.Message}");
+                return "";
             }
-        }
-
-        public static Dictionary<string, string> ParsePythonOutput(string output)
-        {
-            var dictionary = new System.Collections.Generic.Dictionary<string, string>();
-            var lines = output.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-
-            foreach (var line in lines)
-            {
-                if (line.Contains(":"))
-                {
-                    var parts = line.Split(new[] { ':' }, 2);
-                    dictionary[parts[0]] = parts[1];
-                }
-            }
-            return dictionary;
         }
     }
 }

@@ -83,9 +83,9 @@ def gerar_e_salvar_imagem(f_vetor, altura, largura, nome_arquivo='resultado_imag
     cv2.imwrite(nome_arquivo, imagem_2d)
     print(f"Imagem salva como '{nome_arquivo}'", file=sys.stderr)
 
-    cv2.imshow('Imagem Resultante', imagem_final)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    # cv2.imshow('Imagem Resultante', imagem_2d)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
     
 
 def main():
@@ -98,12 +98,13 @@ def main():
     id_matriz = data['typeMatrix']
     g = np.array(data['signalV'])
     id_algoritmo = data['algorithm']
-    tipSinal = data['typeSignal']
+    typeSignal = data['typeSignal']
+    userId = data['id']
     
-    if typeSignal == '3' || typeSignal == '6':
+    if typeSignal == '3' or typeSignal == '6':
         max_iter = 1
     else:
-        max_iter = 10 
+        max_iter = 20 
 
     script_dir = os.path.dirname(__file__)
     caminho_matriz = os.path.join(script_dir, '..', 'Matrix', f'H-{id_matriz}.csv')
@@ -115,23 +116,24 @@ def main():
         sys.exit(1)
 
     if id_algoritmo == 1:
-        f_resultado, iteracoes, erro = calcular_cgnr(H, g, 1e-4, max_iter)
+        f_resultado, iteracoes, erro = calcular_cgnr(H, g, 1e-5, max_iter)
     else:
-        f_resultado, iteracoes, erro = cgne_otimizada(H, g, 1e-4, max_iter)
+        f_resultado, iteracoes, erro = cgne_otimizada(H, g, 1e-5, max_iter)
     
     # Gera e salva a imagem do resultado
     tamanho_vetor = f_resultado.size
     dimensao = int(sqrt(tamanho_vetor))
     
     if dimensao * dimensao == tamanho_vetor:
-        caminho_imagem_saida = "resultado_imagem.png"
+        
+        nome_arquivo = f"Imagem-{userId}.png"
+        results_dir = os.path.join(script_dir, '..', '..', 'Results')
+        caminho_imagem_saida = os.path.join(results_dir, nome_arquivo)
+
         gerar_e_salvar_imagem(f_resultado, dimensao, dimensao, caminho_imagem_saida)
         
         resultado_final = {
-            "status": "success",
-            "imagePath": caminho_imagem_saida,
-            "iterations": iteracoes,
-            "finalError": erro
+            "imagePath": caminho_imagem_saida
         }
     else:
         resultado_final = {

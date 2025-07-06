@@ -15,6 +15,7 @@ builder.Services.AddCors(options =>
 
 // ----------------------------------------------------
 
+builder.Services.AddSingleton<IResourceThrottleService, ResourceThrottleService>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
