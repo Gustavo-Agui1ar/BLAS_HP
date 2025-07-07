@@ -5,7 +5,7 @@ public interface IResourceThrottleService
     Task DequeueAndProcess();
     JobInfo? GetJob(Guid jobId);
     Task<ThrottleResult> TryProcessOrQueueAsync(Func<Task<string>> work);
-
+    void RemoveJob(Guid jobId);
 }
 
 public record ThrottleResult(JobStatus Status, Guid JobId);

@@ -43,43 +43,43 @@ public class ImageController : ControllerBase
     }
 
     [HttpGet("status/{jobId}")]
-    public async Task<IActionResult> GetJobStatus(Guid jobId)
-    {
-        var job = _throttleService.GetJob(jobId);
-
-        if (job == null)
+        public async Task<IActionResult> GetJobStatus(Guid jobId)
         {
-            return NotFound(new { message = "Job não encontrado." });
+            var job = _throttleService.GetJob(jobId);
+
+            if (job == null)
+            {
+                return NotFound(new { message = "Job não encontrado." });
         }
 
-        return job.Status switch
-        {
-            JobStatus.Queued => Ok(new { status = "Queued" }),
+        switch (job.Status) {
+            
+            case JobStatus.Processing:
+                return Ok(new { status = "Processing" });
+            
+            case JobStatus.Queued:
+                return Ok(new { status = "Queued" });
+            
+            case JobStatus.Completed:
+                if (string.IsNullOrEmpty(job.ResultPath) || !System.IO.File.Exists(job.ResultPath))
+                    return NotFound(new { message = "Arquivo da imagem não encontrado no servidor." });
+               
+                byte[] imageBytes = await System.IO.File.ReadAllBytesAsync(job.ResultPath);
+                Response.Headers.Append("X-Execution-Time", $"{job.TimeExecuted.TotalSeconds:F3}");
+                return File(imageBytes, "image/png");
+            
+            case JobStatus.Failed:
+                _throttleService.RemoveJob(jobId);
+                return StatusCode(500, new
+                {
+                    status = "Failed",
+                    error = job.ErrorMessage ?? "Erro desconhecido.",
+                    duration = $"{job.TimeExecuted.TotalSeconds:F2} segundos"
+                });
+            
+            default:
+                return BadRequest(new { message = "Status de job desconhecido." });
+        }
 
-            JobStatus.Processing => Ok(new { status = "Processing" }),
-
-            JobStatus.Completed when string.IsNullOrEmpty(job.ResultPath) || !System.IO.File.Exists(job.ResultPath)
-                => NotFound(new { message = "Arquivo da imagem não encontrado no servidor." }),
-
-            JobStatus.Completed => await HandleCompletedJob(job),
-
-            JobStatus.Failed => StatusCode(500, new
-            {
-                status = "Failed",
-                error = job.ErrorMessage ?? "Erro desconhecido.",
-                duration = $"{job.TimeExecuted.TotalSeconds:F2} segundos"
-            }),
-
-            _ => BadRequest(new { message = "Status de job desconhecido." })
-        };
-    }
-
-    private async Task<IActionResult> HandleCompletedJob(JobInfo job)
-    {
-        byte[] imageBytes = await System.IO.File.ReadAllBytesAsync(job.ResultPath);
-
-        Response.Headers.Append("X-Execution-Time", $"{job.TimeExecuted.TotalSeconds:F3}");
-
-        return File(imageBytes, "image/png");
     }
 }

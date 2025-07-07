@@ -10,23 +10,23 @@ namespace BLAS_HP.Service.Python
 {
     class PythonService
     {
-        static string scriptFolder = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), @"Utils\Python"));
-        static string scriptFile = Path.Combine(scriptFolder, "algorithm_matrix.py");
-        static string pythonExecutable = @"C:\Python312\python.exe";
+        static string _scriptFolder = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), @"Utils\Python"));
+        static string _scriptFile = Path.Combine(_scriptFolder, "algorithm_matrix.py");
+        static string _pythonExecutable = @"C:\Python312\python.exe";
         public static string ResolveImage(ComputeImageRequest req)
         {
-            string arguments = $"\"{scriptFile}\"";
+            string arguments = $"\"{_scriptFile}\"";
 
             var processStartInfo = new ProcessStartInfo
             {
-                FileName = pythonExecutable,
+                FileName = _pythonExecutable,
                 Arguments = arguments,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                WorkingDirectory = scriptFolder
+                WorkingDirectory = _scriptFolder
             };
 
             try
@@ -38,8 +38,12 @@ namespace BLAS_HP.Service.Python
                         throw new InvalidOperationException("Não foi possível iniciar o processo Python.");
                     }
 
-                    string jsonData = JsonSerializer.Serialize(req);
-
+                    var serializerOptions = new JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    };
+                    string jsonData = JsonSerializer.Serialize(req, serializerOptions);
+                    
                     process.StandardInput.Write(jsonData);
                     process.StandardInput.Close();
 

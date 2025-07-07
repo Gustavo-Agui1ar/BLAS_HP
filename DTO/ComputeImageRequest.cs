@@ -6,18 +6,18 @@ namespace BLAS_HP.DTO
     public class ComputeImageRequest
     {
         [Required(ErrorMessage = "id é nescessario")]
-        public Guid id { get; set; }
+        public Guid Id { get; set; }
 
         [Required(ErrorMessage = "tipo é nescessario")]
-        public int typeMatrix { get; set; }
+        public int TypeMatrix { get; set; }
         
         [Required(ErrorMessage = "sinal é nescessario")]
-        public int typeSignal { get; set; }
+        public int TypeSignal { get; set; }
         
         [Required(ErrorMessage = "sinal_v é nescessario")]
-        public double[]? signalV { get; set; }
+        public double[]? SignalV { get; set; }
 
         [Required(ErrorMessage = "algoritmo é nescessario")]
-        public int algorithm { get; set; }
+        public int Algorithm { get; set; }
     }
 }

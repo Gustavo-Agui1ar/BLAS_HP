@@ -18,9 +18,9 @@ public class ResourceThrottleService : IResourceThrottleService, IDisposable
     public ResourceThrottleService(ILogger<ResourceThrottleService> logger, IConfiguration configuration)
     {
         _logger = logger;
-        _maxConcurrency = configuration.GetValue<int>("Processing:MaxConcurrency", 6);
-        _cpuThreshold = configuration.GetValue<double>("Processing:CpuThreshold", 85.0);
-        _memoryThreshold = configuration.GetValue<double>("Processing:MemoryThreshold", 85.0);
+        _maxConcurrency = configuration.GetValue<int>("Processing:MaxConcurrency");
+        _cpuThreshold = configuration.GetValue<double>("Processing:CpuThreshold");
+        _memoryThreshold = configuration.GetValue<double>("Processing:MemoryThreshold");
 
         _semaphore = new SemaphoreSlim(_maxConcurrency);
 
@@ -55,34 +55,31 @@ public class ResourceThrottleService : IResourceThrottleService, IDisposable
         }
     }
 
-        public async Task DequeueAndProcess()
+    public async Task DequeueAndProcess()
+    {
+        if (_workQueue.TryPeek(out var jobId))
         {
-            if (_workQueue.TryPeek(out var jobId))
+            if (!IsSystemHealthy())
             {
-                if (!IsSystemHealthy())
-                {
-                    _logger.LogInformation("Worker pausado devido à alta carga do sistema.");
-                    await Task.Delay(5000); 
-                    return;
-                }
+                _logger.LogInformation("Worker pausado devido à alta carga do sistema.");
+                await Task.Delay(2000); 
+                return;
+            }
 
-                await _semaphore.WaitAsync();
+            await _semaphore.WaitAsync();
 
-                if (_workQueue.TryDequeue(out _))
-                {
-                    _logger.LogInformation("Worker pegou o job {JobId} da fila para processamento.", jobId);
-                    await ProcessWorkAsync(jobId);
-                }
-                else
-                {
-                    _semaphore.Release(); // Outro worker pode ter pego o job, libera o slot
-                }
+            if (_workQueue.TryDequeue(out _))
+            {
+                _logger.LogInformation("Worker pegou o job {JobId} da fila para processamento.", jobId);
+                await ProcessWorkAsync(jobId);
+            }
+            else
+            {
+                _semaphore.Release();
             }
         }
+    }
 
-    /// <summary>
-    /// Lógica central de execução de um trabalho, agora em um método separado para ser reutilizado.
-    /// </summary>
     private async Task ProcessWorkAsync(Guid jobId)
     {
         if (!_jobStore.TryGetValue(jobId, out var jobInfo))
@@ -118,11 +115,15 @@ public class ResourceThrottleService : IResourceThrottleService, IDisposable
         }
     }
 
-    // Método para obter o status de um job
     public JobInfo? GetJob(Guid jobId)
     {
         _jobStore.TryGetValue(jobId, out var jobInfo);
         return jobInfo;
+    }
+
+    public void RemoveJob (Guid jobId)
+    {
+        _jobStore.Remove(jobId, out var _);
     }
 
     private bool IsSystemHealthy()

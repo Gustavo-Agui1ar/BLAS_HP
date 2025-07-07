@@ -9,7 +9,7 @@ import os
 #
 # As funções cgne_otimizada e calcular_cgnr não precisam de alteração.
 #
-def cgne_otimizada(H, g, tolerancia=1e-4, max_iter=10):
+def cgne_otimizada(H, g, tolerancia=1e-5, max_iter=10):
     f = np.zeros(H.shape[1], dtype=np.float64)
     r = g.copy()
     p = H.T @ r
@@ -39,7 +39,7 @@ def cgne_otimizada(H, g, tolerancia=1e-4, max_iter=10):
 
     return f, i + 1, erro
 
-def calcular_cgnr(H, g, tol=1e-4, max_iter=10):
+def calcular_cgnr(H, g, tol=1e-5, max_iter=10):
     print("Iniciando o algoritmo CGNR...", file=sys.stderr)
     f = np.zeros(H.shape[1])
     r = g
@@ -104,7 +104,7 @@ def main():
     if typeSignal == '3' or typeSignal == '6':
         max_iter = 1
     else:
-        max_iter = 20 
+        max_iter = 10 
 
     script_dir = os.path.dirname(__file__)
     caminho_matriz = os.path.join(script_dir, '..', 'Matrix', f'H-{id_matriz}.csv')
