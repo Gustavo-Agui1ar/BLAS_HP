@@ -13,7 +13,9 @@ public class ResourceThrottleService : IResourceThrottleService, IDisposable
     private readonly double _cpuThreshold;
     private readonly double _memoryThreshold;
     private readonly PerformanceCounter? _cpuCounter;
-    private readonly PerformanceCounter? _memoryCounter;
+    private readonly PerformanceCounter? _availableMemoryCounter;
+    
+    private readonly double _totalPhysicalMemoryMB;
 
     public ResourceThrottleService(ILogger<ResourceThrottleService> logger, IConfiguration configuration)
     {
@@ -27,7 +29,16 @@ public class ResourceThrottleService : IResourceThrottleService, IDisposable
         if (OperatingSystem.IsWindows())
         {
             _cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
-            _memoryCounter = new PerformanceCounter("Memory", "% Committed Bytes In Use");
+
+            _availableMemoryCounter = new PerformanceCounter("Memory", "Available MBytes");
+
+            GCMemoryInfo gcInfo = GC.GetGCMemoryInfo();
+            _totalPhysicalMemoryMB = (double)gcInfo.TotalAvailableMemoryBytes / 1024 / 1024;
+
+            _logger.LogInformation($"Memória Física Total detectada: {_totalPhysicalMemoryMB:N2} MB.");
+
+            _cpuCounter.NextValue();
+            _availableMemoryCounter.NextValue();
         }
     }
 
@@ -35,7 +46,7 @@ public class ResourceThrottleService : IResourceThrottleService, IDisposable
     {
         var jobId = Guid.NewGuid();
 
-        if (IsSystemHealthy() && await _semaphore.WaitAsync(0))
+        if (await IsSystemHealthyAsync() && await _semaphore.WaitAsync(0))
         {
             _logger.LogInformation("Recursos disponíveis. Processando job {JobId} imediatamente.", jobId);
             var jobInfo = new JobInfo { Status = JobStatus.Processing, Work = work };
@@ -46,7 +57,7 @@ public class ResourceThrottleService : IResourceThrottleService, IDisposable
         }
         else
         {
-            _logger.LogInformation("Recursos ocupados. Colocando job {JobId} na fila.", jobId);
+            _logger.LogInformation("Recursos ocupados ou sistema sobrecarregado. Colocando job {JobId} na fila.", jobId);
             var jobInfo = new JobInfo { Status = JobStatus.Queued, Work = work };
             _jobStore.TryAdd(jobId, jobInfo);
             _workQueue.Enqueue(jobId);
@@ -57,18 +68,17 @@ public class ResourceThrottleService : IResourceThrottleService, IDisposable
 
     public async Task DequeueAndProcess()
     {
-        if (_workQueue.TryPeek(out var jobId))
+        if (!await IsSystemHealthyAsync())
         {
-            if (!IsSystemHealthy())
-            {
-                _logger.LogInformation("Worker pausado devido à alta carga do sistema.");
-                await Task.Delay(2000); 
-                return;
-            }
+            _logger.LogTrace("Worker pausado devido à alta carga do sistema.");
+            return;
+        }
 
-            await _semaphore.WaitAsync();
+        await _semaphore.WaitAsync();
 
-            if (_workQueue.TryDequeue(out _))
+        try
+        {
+            if (_workQueue.TryDequeue(out var jobId))
             {
                 _logger.LogInformation("Worker pegou o job {JobId} da fila para processamento.", jobId);
                 await ProcessWorkAsync(jobId);
@@ -77,6 +87,11 @@ public class ResourceThrottleService : IResourceThrottleService, IDisposable
             {
                 _semaphore.Release();
             }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ocorreu um erro inesperado no worker DequeueAndProcess.");
+            _semaphore.Release();
         }
     }
 
@@ -95,7 +110,7 @@ public class ResourceThrottleService : IResourceThrottleService, IDisposable
             jobInfo.StartedAt = DateTime.Now;
 
             jobInfo.ResultPath = await jobInfo.Work();
-            
+
             jobInfo.Status = JobStatus.Completed;
             jobInfo.CompletedAt = DateTime.Now;
             jobInfo.TimeExecuted = (jobInfo.CompletedAt - jobInfo.StartedAt);
@@ -115,38 +130,35 @@ public class ResourceThrottleService : IResourceThrottleService, IDisposable
         }
     }
 
-    public JobInfo? GetJob(Guid jobId)
-    {
-        _jobStore.TryGetValue(jobId, out var jobInfo);
-        return jobInfo;
-    }
-
-    public void RemoveJob (Guid jobId)
-    {
-        _jobStore.Remove(jobId, out var _);
-    }
-
-    private bool IsSystemHealthy()
+    private async Task<bool> IsSystemHealthyAsync()
     {
         if (!OperatingSystem.IsWindows()) return true;
 
-        _cpuCounter?.NextValue();
-        Thread.Sleep(100);
+        await Task.Delay(1000);
 
         var currentCpuUsage = _cpuCounter?.NextValue() ?? 0.0;
-        var currentMemoryUsage = _memoryCounter?.NextValue() ?? 0.0;
+
+        var availableMemoryMB = _availableMemoryCounter?.NextValue() ?? _totalPhysicalMemoryMB;
+
+        var usedMemoryMB = _totalPhysicalMemoryMB - availableMemoryMB;
+        var currentMemoryUsage = (_totalPhysicalMemoryMB > 0) ? (usedMemoryMB / _totalPhysicalMemoryMB) * 100.0 : 0.0;
 
         _logger.LogInformation($"Uso atual - CPU: {currentCpuUsage:F2}%, Memória: {currentMemoryUsage:F2}%");
 
         return currentCpuUsage < _cpuThreshold && currentMemoryUsage < _memoryThreshold;
     }
 
-    public void Dispose() {
+    public void Dispose()
+    {
         _workQueue.Clear();
         _jobStore.Clear();
         _semaphore.Dispose();
         _cpuCounter?.Dispose();
-        _memoryCounter?.Dispose();
+
+        _availableMemoryCounter?.Dispose();
         _logger.LogInformation("ResourceThrottleService disposed and resources cleared.");
     }
+
+    public JobInfo? GetJob(Guid jobId) { _jobStore.TryGetValue(jobId, out var jobInfo); return jobInfo; }
+    public void RemoveJob(Guid jobId) { _jobStore.Remove(jobId, out var _); }
 }

@@ -9,13 +9,13 @@ namespace BLAS_HP.DTO
         public Guid Id { get; set; }
 
         [Required(ErrorMessage = "tipo é nescessario")]
-        public int TypeMatrix { get; set; }
+        public int Matrix { get; set; }
         
         [Required(ErrorMessage = "sinal é nescessario")]
-        public int TypeSignal { get; set; }
+        public int Signal { get; set; }
         
         [Required(ErrorMessage = "sinal_v é nescessario")]
-        public double[]? SignalV { get; set; }
+        public double[]? SignalData { get; set; }
 
         [Required(ErrorMessage = "algoritmo é nescessario")]
         public int Algorithm { get; set; }

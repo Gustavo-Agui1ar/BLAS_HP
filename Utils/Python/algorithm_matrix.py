@@ -95,10 +95,10 @@ def main():
         print(json.dumps({"status": "error", "message": "Erro: Não foi possível decodificar o JSON recebido."}))
         sys.exit(1)
 
-    id_matriz = data['typeMatrix']
-    g = np.array(data['signalV'])
+    id_matriz = data['matrix']
+    g = np.array(data['signalData'])
     id_algoritmo = data['algorithm']
-    typeSignal = data['typeSignal']
+    typeSignal = data['signal']
     userId = data['id']
     
     if typeSignal == '3' or typeSignal == '6':
